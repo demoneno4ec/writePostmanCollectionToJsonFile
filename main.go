@@ -7,14 +7,15 @@ import (
 	"fmt"
 	"golang.org/x/sys/unix"
 	"io"
+	"io/fs"
 	"io/ioutil"
 	"log"
 	"net/http"
-	"os"
+	os "os"
 	"time"
 )
 
-const ENV_VAR_API_KEY = "POSTMAN_API_KEY"
+const EnvVarApiKey = "POSTMAN_API_KEY"
 
 type Config struct {
 	apiKey      string
@@ -59,7 +60,7 @@ func main() {
 	branch := flag.String("branch", "", "Если не задано, название по умолчанию default.json")
 	flag.Parse()
 	config := Config{
-		apiKey:      os.Getenv(ENV_VAR_API_KEY),
+		apiKey:      os.Getenv(EnvVarApiKey),
 		workspaceId: os.Getenv("POSTMAN_WORKSPACE_ID"),
 		path:        *path,
 		branch:      *branch,
@@ -80,7 +81,7 @@ func writeCollectionById(collectionId string, fullPath string) {
 	url := "https://api.getpostman.com/collections/" + collectionId
 	requestData := RequestData{}
 	data := getResponse(url, "GET", requestData)
-	err := os.WriteFile(fullPath, data, 0644)
+	err := os.WriteFile(fullPath, data, fs.FileMode(os.O_CREATE|os.O_RDWR))
 	if err != nil {
 		log.Fatal(err)
 	}
@@ -162,7 +163,7 @@ func getCollections(workspaceId string) []CollectionFromCollections {
 }
 
 func getResponse(url string, method string, requestData RequestData) []byte {
-	apiKey := os.Getenv(ENV_VAR_API_KEY)
+	apiKey := os.Getenv(EnvVarApiKey)
 	headerKey := "X-API-Key"
 
 	client := &http.Client{}
