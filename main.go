@@ -8,6 +8,7 @@ import (
 	"golang.org/x/sys/unix"
 	"io"
 	"io/ioutil"
+	"log"
 	"net/http"
 	"os"
 	"time"
@@ -65,18 +66,29 @@ func main() {
 		filename:    *filename,
 	}
 	validate(config)
-	jsonResult := getJson(config)
-	fmt.Println("json : \t", jsonResult)
+	writeJson(config)
 }
 
-func getJson(config Config) string {
+func writeJson(config Config) {
 	collectionId := getCollectionId(config.workspaceId, config.branch)
-	fmt.Println("Collection Id: \t", collectionId)
-	return "result"
+
+	fullPath := config.path + config.filename
+	writeCollectionById(collectionId, fullPath)
+}
+
+func writeCollectionById(collectionId string, fullPath string) {
+	url := "https://api.getpostman.com/collections/" + collectionId
+	requestData := RequestData{}
+	data := getResponse(url, "GET", requestData)
+	err := os.WriteFile(fullPath, data, 0644)
+	if err != nil {
+		log.Fatal(err)
+	}
 }
 
 func validate(config Config) {
 	var errorMessages []string
+	path := config.path
 
 	if config.apiKey == "" {
 		errorMessages = append(errorMessages, "env POSTMAN_API_KEY required")
@@ -84,8 +96,11 @@ func validate(config Config) {
 	if config.workspaceId == "" {
 		errorMessages = append(errorMessages, "env P~OSTMAN_WORKSPACE_ID required")
 	}
-	if writable(config.path) == false {
+	if writable(path) == false {
 		errorMessages = append(errorMessages, "path - должен быть валидным путем в UNIX и открытым на запись")
+	}
+	if path[len(path)-1:] != "/" {
+		errorMessages = append(errorMessages, "path - должен заканчиваться на /")
 	}
 
 	if len(errorMessages) == 0 {
