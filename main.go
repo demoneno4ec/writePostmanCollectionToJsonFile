@@ -131,14 +131,13 @@ func getCollectionId(workspaceId string, forkName string) string {
 			collectionUid = collection.Uid
 		}
 	}
-
-	if collectionUid == "" && collectionStagingUid == "" {
-		panic(errors.New("collection not found"))
-	}
-	if collectionUid == "" {
-		return collectionStagingUid
-	} else {
+	switch {
+	case collectionUid != "":
 		return collectionUid
+	case collectionStagingUid != "":
+		return collectionStagingUid
+	default:
+		panic(errors.New("collection not found"))
 	}
 }
 
