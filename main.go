@@ -12,10 +12,12 @@ import (
 	"log"
 	"net/http"
 	os "os"
+	"path/filepath"
 	"time"
 )
 
 const EnvVarApiKey = "POSTMAN_API_KEY"
+const EnvVarWorkspaceID = "POSTMAN_WORKSPACE_ID"
 
 type Config struct {
 	apiKey      string
@@ -23,6 +25,31 @@ type Config struct {
 	path        string
 	filename    string
 	branch      string
+}
+
+func (config *Config) validate() {
+	var errorMessages []string
+	path := config.path
+
+	if config.apiKey == "" {
+		errorMessages = append(errorMessages, "env POSTMAN_API_KEY required")
+	}
+	if config.workspaceId == "" {
+		errorMessages = append(errorMessages, "env P~OSTMAN_WORKSPACE_ID required")
+	}
+	if !writable(path) {
+		errorMessages = append(errorMessages, "path - должен быть валидным путем в UNIX и открытым на запись")
+	}
+
+	if len(errorMessages) == 0 {
+		return
+	}
+
+	for _, message := range errorMessages {
+		fmt.Println(message)
+	}
+
+	os.Exit(1)
 }
 
 type QueryParams struct {
@@ -36,10 +63,10 @@ type RequestData struct {
 }
 
 type Collections struct {
-	Collections []CollectionFromCollections
+	Collections []Collection
 }
 
-type CollectionFromCollections struct {
+type Collection struct {
 	Id        string    `json:"id"`
 	Name      string    `json:"name"`
 	Owner     string    `json:"owner"`
@@ -61,19 +88,19 @@ func main() {
 	flag.Parse()
 	config := Config{
 		apiKey:      os.Getenv(EnvVarApiKey),
-		workspaceId: os.Getenv("POSTMAN_WORKSPACE_ID"),
+		workspaceId: os.Getenv(EnvVarWorkspaceID),
 		path:        *path,
 		branch:      *branch,
 		filename:    *filename,
 	}
-	validate(config)
+	config.validate()
 	writeJson(config)
 }
 
 func writeJson(config Config) {
 	collectionId := getCollectionId(config.workspaceId, config.branch)
 
-	fullPath := config.path + config.filename
+	fullPath := filepath.Join(config.path, config.filename)
 	writeCollectionById(collectionId, fullPath)
 }
 
@@ -85,34 +112,6 @@ func writeCollectionById(collectionId string, fullPath string) {
 	if err != nil {
 		log.Fatal(err)
 	}
-}
-
-func validate(config Config) {
-	var errorMessages []string
-	path := config.path
-
-	if config.apiKey == "" {
-		errorMessages = append(errorMessages, "env POSTMAN_API_KEY required")
-	}
-	if config.workspaceId == "" {
-		errorMessages = append(errorMessages, "env P~OSTMAN_WORKSPACE_ID required")
-	}
-	if writable(path) == false {
-		errorMessages = append(errorMessages, "path - должен быть валидным путем в UNIX и открытым на запись")
-	}
-	if path[len(path)-1:] != "/" {
-		errorMessages = append(errorMessages, "path - должен заканчиваться на /")
-	}
-
-	if len(errorMessages) == 0 {
-		return
-	}
-
-	for _, message := range errorMessages {
-		fmt.Println(message)
-	}
-
-	os.Exit(1)
 }
 
 func writable(path string) bool {
@@ -143,7 +142,7 @@ func getCollectionId(workspaceId string, forkName string) string {
 	}
 }
 
-func getCollections(workspaceId string) []CollectionFromCollections {
+func getCollections(workspaceId string) []Collection {
 	url := "https://api.getpostman.com/collections"
 	queryParams := []QueryParams{
 		{Key: "workspace", Value: workspaceId},
@@ -166,7 +165,7 @@ func getResponse(url string, method string, requestData RequestData) []byte {
 	apiKey := os.Getenv(EnvVarApiKey)
 	headerKey := "X-API-Key"
 
-	client := &http.Client{}
+	client := http.DefaultClient
 	body := requestData.Body
 	queryParams := requestData.QueryParams
 	req, _ := http.NewRequest(method, url, body)
