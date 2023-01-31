@@ -2,16 +2,13 @@ package main
 
 import (
 	"encoding/json"
-	"errors"
 	"flag"
 	"fmt"
 	"golang.org/x/sys/unix"
 	"io"
-	"io/fs"
 	"io/ioutil"
-	"log"
 	"net/http"
-	os "os"
+	"os"
 	"path/filepath"
 	"time"
 )
@@ -94,50 +91,68 @@ func main() {
 		filename:    *filename,
 	}
 	config.validate()
-	writeJson(config)
+	err := writeJson(config)
+	if err != nil {
+		fmt.Println(err)
+	}
 }
 
-func writeJson(config Config) {
-	collectionId := getCollectionId(config.workspaceId, config.branch)
-
+func writeJson(config Config) error {
+	data, err := getCollectionData(config)
+	if err != nil {
+		return err
+	}
 	fullPath := filepath.Join(config.path, config.filename)
-	writeCollectionById(collectionId, fullPath)
+	err = writeCollection(data, fullPath)
+	return err
 }
 
-func writeCollectionById(collectionId string, fullPath string) {
+func writeCollection(collection []byte, fullPath string) error {
+	err := os.WriteFile(fullPath, collection, 0644)
+
+	if err != nil {
+		return fmt.Errorf("is not write collection: %w", err)
+	}
+
+	return err
+}
+
+func getCollectionData(config Config) ([]byte, error) {
+	collectionId, err := getCollectionId(config.workspaceId, config.branch)
+	if err != nil {
+		return nil, err
+	}
+
 	url := "https://api.getpostman.com/collections/" + collectionId
 	requestData := RequestData{}
-	data := getResponse(url, "GET", requestData)
-	err := os.WriteFile(fullPath, data, fs.FileMode(os.O_CREATE|os.O_RDWR))
-	if err != nil {
-		log.Fatal(err)
-	}
+	return getResponse(url, "GET", requestData), nil
 }
 
 func writable(path string) bool {
 	return unix.Access(path, unix.W_OK) == nil
 }
 
-func getCollectionId(workspaceId string, forkName string) string {
+func getCollectionId(workspaceId string, forkName string) (string, error) {
 	collections := getCollections(workspaceId)
 	var collectionUid string
 	var collectionStagingUid string
 
 	for _, collection := range collections {
-		if collection.Fork.Label == "staging" {
-			collectionStagingUid = collection.Uid
-		}
 		if collection.Fork.Label == forkName {
 			collectionUid = collection.Uid
+			break
+		}
+		if collection.Fork.Label == "staging" {
+			collectionStagingUid = collection.Uid
 		}
 	}
 	switch {
 	case collectionUid != "":
-		return collectionUid
+		return collectionUid, nil
 	case collectionStagingUid != "":
-		return collectionStagingUid
+		return collectionStagingUid, nil
 	default:
-		panic(errors.New("collection not found"))
+		return "", fmt.Errorf("collection not found")
 	}
 }
 
