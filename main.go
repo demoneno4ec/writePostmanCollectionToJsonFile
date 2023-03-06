@@ -78,6 +78,77 @@ type Collection struct {
 	IsPublic bool `json:"isPublic"`
 }
 
+type postmanClient struct {
+	httpClient  *http.Client
+	basePath    string
+	apiKey      string
+	workspaceId string
+}
+
+func (client *postmanClient) newRequest(method string, urlPath string, body io.Reader) (*http.Request, error) {
+	url := filepath.Join(client.basePath, urlPath)
+	req, err := http.NewRequest(method, url, body)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Add("X-API-Key", client.apiKey)
+	return req, nil
+}
+
+func (client *postmanClient) getCollectionId(forkName string) (string, error) {
+	collections := client.getCollections()
+	var collectionUid string
+	var collectionStagingUid string
+
+	for _, collection := range collections {
+		if collection.Fork.Label == forkName {
+			collectionUid = collection.Uid
+			break
+		}
+		if collection.Fork.Label == "staging" {
+			collectionStagingUid = collection.Uid
+		}
+	}
+	switch {
+	case collectionUid != "":
+		return collectionUid, nil
+	case collectionStagingUid != "":
+		return collectionStagingUid, nil
+	default:
+		return "", fmt.Errorf("collection not found")
+	}
+}
+
+func (client *postmanClient) getCollections() []Collection {
+	url := "https://api.getpostman.com/collections"
+	queryParams := []QueryParams{
+		{Key: "workspace", Value: client.workspaceId},
+	}
+	requestData := RequestData{
+		QueryParams: queryParams,
+	}
+	data := getResponse(url, "GET", requestData)
+	collections := &Collections{}
+	err := json.Unmarshal(data, collections)
+
+	if err != nil {
+		panic(err)
+	}
+
+	return collections.Collections
+}
+
+func (client *postmanClient) getCollectionData(forkName string) ([]byte, error) {
+	collectionId, err := client.getCollectionId(forkName)
+	if err != nil {
+		return nil, err
+	}
+
+	url := "https://api.getpostman.com/collections/" + collectionId
+	requestData := RequestData{}
+	return getResponse(url, "GET", requestData), nil
+}
+
 func main() {
 	path := flag.String("path", "", "Путь до файла, куда записать коллекцию, валидный путь с доступом на запись")
 	filename := flag.String("filename", "", "Если не передан или указанный форк не существует, будет взята родительская коллекция, аля master")
